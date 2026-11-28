@@ -37,10 +37,14 @@ jest.mock('@hcengineering/platform', () => ({
   getResource: async (id: string) => modeResults[id]
 }))
 
-jest.mock('@hcengineering/ui', () => ({
-  getCurrentResolvedLocation: jest.fn(),
-  locationToUrl: jest.fn()
-}))
+jest.mock('@hcengineering/ui', () => {
+  const { writable } = jest.requireActual('svelte/store')
+  return {
+    getCurrentResolvedLocation: jest.fn(),
+    locationToUrl: jest.fn(),
+    resolvedLocationStore: writable({ path: ['workbench', 'workspace'] })
+  }
+})
 
 jest.mock('@hcengineering/presentation', () => ({
   getClient: () => ({

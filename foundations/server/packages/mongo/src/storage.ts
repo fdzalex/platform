@@ -1889,6 +1889,12 @@ function isPlainObject (value: any): value is Record<string, any> {
 }
 
 function permutations (keys: string[]): string[][] {
+  // Every order of the keys becomes a variant, so check the limit before building any of them.
+  let orders = 1
+  for (let i = 2; i <= keys.length; i++) {
+    orders *= i
+    checkKeyOrders(orders)
+  }
   if (keys.length <= 1) return [keys]
   return keys.flatMap((key, i) =>
     permutations([...keys.slice(0, i), ...keys.slice(i + 1)]).map((rest) => [key, ...rest])
@@ -1901,33 +1907,45 @@ function permutations (keys: string[]): string[][] {
  * literal is matched with `$in` over all of its key orders.
  */
 function keyOrders (value: any): any[] {
-  let variants: any[]
   if (Array.isArray(value)) {
-    variants = [[]]
+    let variants: any[] = [[]]
     for (const item of value) {
       const items = keyOrders(item)
+      checkKeyOrders(variants.length * items.length)
       variants = variants.flatMap((list) => items.map((it) => [...list, it]))
-      checkKeyOrders(variants)
     }
-  } else if (isPlainObject(value)) {
-    variants = []
-    for (const keys of permutations(Object.keys(value))) {
+    return variants
+  }
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value)
+    let count = 1
+    for (let i = 2; i <= keys.length; i++) {
+      count *= i
+      checkKeyOrders(count)
+    }
+    const valueVariants = new Map<string, any[]>()
+    for (const key of keys) {
+      const values = keyOrders(value[key])
+      count *= values.length
+      checkKeyOrders(count)
+      valueVariants.set(key, values)
+    }
+    const variants: any[] = []
+    for (const order of permutations(keys)) {
       let objects: any[] = [{}]
-      for (const key of keys) {
-        const values = keyOrders(value[key])
+      for (const key of order) {
+        const values = valueVariants.get(key) ?? []
         objects = objects.flatMap((obj) => values.map((it) => ({ ...obj, [key]: it })))
-        checkKeyOrders([...variants, ...objects])
       }
       variants.push(...objects)
     }
-  } else {
-    variants = [value]
+    return variants
   }
-  return variants
+  return [value]
 }
 
-function checkKeyOrders (variants: any[]): void {
-  if (variants.length > MAX_KEY_ORDERS) {
+function checkKeyOrders (count: number): void {
+  if (count > MAX_KEY_ORDERS) {
     throw new Error(`A literal value in a link-list filter has more than ${MAX_KEY_ORDERS} key orders`)
   }
 }

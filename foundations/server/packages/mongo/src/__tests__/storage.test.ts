@@ -450,6 +450,34 @@ describe('mongo operations', () => {
     expect(translate({ name: { $in: [linkA] } })).toEqual({ name: { $in: [linkA] } })
   })
 
+  it('rejects literal link filters with more than 256 key orders before building them', () => {
+    const translate = (query: any): any =>
+      (serverStorage as any).translateQuery(taskPlugin.class.Task, query, { skipClass: true }).base
+    const withKeys = (count: number): Record<string, number> =>
+      Object.fromEntries(Array.from({ length: count }, (_, i) => [`k${i}`, i]))
+
+    // 5! = 120 <= 256 is accepted.
+    expect(translate({ links: withKeys(5) }).links.$in).toHaveLength(120)
+    // 6! = 720 > 256 and much larger objects fail immediately without building permutations.
+    expect(() => translate({ links: withKeys(6) })).toThrow('more than 256 key orders')
+    expect(() => translate({ links: withKeys(20) })).toThrow('more than 256 key orders')
+    expect(() => translate({ links: withKeys(1000) })).toThrow('more than 256 key orders')
+    // Combined key orders across array items (2^9 = 512) and nested objects (4! * 2^4 = 384) are also rejected.
+    expect(() => translate({ links: Array.from({ length: 9 }, () => ({ a: 1, b: 2 })) })).toThrow(
+      'more than 256 key orders'
+    )
+    expect(() =>
+      translate({
+        links: {
+          a: { x: 1, y: 2 },
+          b: { x: 1, y: 2 },
+          c: { x: 1, y: 2 },
+          d: { x: 1, y: 2 }
+        }
+      })
+    ).toThrow('more than 256 key orders')
+  })
+
   // Run shared integration tests
   runSharedIntegrationTests('MongoDB', () => ({
     client,
